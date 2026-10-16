@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Practice Flow | 練習メニュービルダー</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;color:#e9efff;background:#0b1020}
+*{box-sizing:border-box}body{margin:0}button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.3;cursor:default}
+.wrap{max-width:1000px;margin:auto;padding:24px 16px 70px}.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.logo{font-size:26px;font-weight:900;letter-spacing:-1px}.logo span{color:#82a6ff}.muted{color:#a6b2cc;font-size:13px}
+.card{background:#151e34;border:1px solid #2c3854;border-radius:18px;padding:20px;margin-top:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.field{display:flex;flex-direction:column;gap:7px}
+label{font-size:13px;color:#b9c6e1;font-weight:650}input,textarea{background:#0e1629;color:#fff;border:1px solid #3b4965;border-radius:10px;padding:12px;min-width:0;width:100%}input:focus,textarea:focus{outline:2px solid #7195ff}
+button{background:#293752;border:1px solid #425473;color:#f5f7ff;border-radius:10px;padding:10px 14px;font-weight:650}
+button:hover{filter:brightness(1.15)}button.primary{background:#6389f8;border-color:#6389f8;color:#071127}
+button.small{padding:6px 10px;font-size:13px}button.active{background:#6389f8;color:#071127}
+.actions,.chips{display:flex;gap:8px;flex-wrap:wrap}.chips button{min-width:53px}
+h2{font-size:17px;margin:0 0 15px}.stats{display:flex;gap:22px;flex-wrap:wrap}.stat strong{display:block;font-size:23px;margin-top:5px}
+.item{display:flex;align-items:center;gap:12px;border:1px solid #30415d;border-radius:14px;padding:12px;margin:9px 0;background:#101a30}
+.time{width:100px;flex-shrink:0;font-size:13px;color:#a7baff;line-height:1.6}.time strong{color:white}
+.itembody{flex:1;min-width:0}.itembody strong{display:block;overflow-wrap:anywhere}.itembody span{font-size:12px;color:#aab8d4}
+.itemactions{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}.itemactions button{padding:6px 8px}
+.note{margin-top:12px;color:#9ba9c5;font-size:12px}.empty{text-align:center;color:#9ba9c5;padding:28px}
+@media(max-width:680px){.grid{grid-template-columns:1fr}.item{flex-wrap:wrap}.itemactions{width:100%}.time{width:88px}.card{padding:15px}}
+@media print{body{background:white;color:black}.wrap{max-width:none}.card{background:white;border:1px solid #ddd}.muted,.note,.editor,.actions,.itemactions,.top button{display:none!important}.item{background:white;border:1px solid #ccc}.time,.time strong,.itembody span{color:black}input{border:none;color:black;background:white;padding:0}.grid{grid-template-columns:1fr 1fr}}
+</style></head><body><main class="wrap">
+<header class="top"><div><div class="logo">Practice <span>Flow</span></div><div class="muted">練習メニューを、時間通りに。</div></div><div class="actions"><button id="new">新規作成</button><button id="copy">LINE用にコピー</button><button id="print">印刷 / PDF</button></div></header>
+<section class="card"><div class="grid"><div class="field"><label for="title">練習タイトル</label><input id="title" placeholder="例：土曜日 全体練習"></div><div class="field"><label for="date">練習日</label><input id="date" type="date"></div><div class="field"><label for="start">練習開始時刻</label><input id="start" type="time"></div><div class="stats"><div class="stat"><label>合計時間</label><strong id="total">0分</strong></div><div class="stat"><label>終了予定</label><strong id="end">--:--</strong></div></div></div></section>
+<section class="card editor"><h2 id="editHeading">＋ メニューを追加</h2><div class="field"><label for="task">練習内容・技の名前</label><input id="task" placeholder="例：トスリバ / 通し / 休憩"></div><div style="height:14px"></div><label>所要時間</label><div class="chips" id="chips" style="margin:9px 0"></div><div class="grid"><div class="field"><label for="duration">分数を自由入力</label><input id="duration" type="number" min="1" max="600" value="10"></div><div class="field"><label for="memo">メモ（任意）</label><input id="memo" placeholder="例：2グループに分かれる"></div></div><div class="actions" style="margin-top:15px"><button class="primary" id="add">メニューを追加</button><button id="cancel" hidden>編集をキャンセル</button></div></section>
+<section class="card"><div class="top"><h2 style="margin:0">タイムスケジュール</h2><span class="muted" id="count"></span></div><div id="list"></div><p class="note">↑↓で順番を変更できます。変更後の開始・終了時刻は自動計算されます。内容はこの端末のブラウザに自動保存されます。</p></section>
+</main><script>
+const KEY="practice-flow-v1";
+const $=id=>document.getElementById(id);
+const today=new Date().toLocaleDateString('sv-SE');
+const defaults=()=>({title:"チーム練習",date:today,start:"19:00",items:[{id:1,name:"ウォーミングアップ",duration:10,memo:""},{id:2,name:"基礎スタンツ",duration:15,memo:""},{id:3,name:"トス練習",duration:10,memo:""},{id:4,name:"通し練習",duration:20,memo:""}]});
+let data;try{data=JSON.parse(localStorage.getItem(KEY))||defaults();if(!Array.isArray(data.items))throw Error()}catch{data=defaults()}
+let editing=null;
+const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clock=n=>`${String(Math.floor(((n%1440)+1440)%1440/60)).padStart(2,"0")}:${String(((n%60)+60)%60).padStart(2,"0")}`;
+const base=()=>{const [h,m]=(data.start||"19:00").split(":").map(Number);return h*60+m};
+function save(){try{localStorage.setItem(KEY,JSON.stringify(data))}catch{}}
+function render(){ $("title").value=data.title;$("date").value=data.date;$("start").value=data.start;
+let elapsed=0;const list=$("list");list.innerHTML="";
+data.items.forEach((item,i)=>{const from=clock(base()+elapsed);elapsed+=item.duration;const to=clock(base()+elapsed);
+const row=document.createElement("div");row.className="item";
+row.innerHTML=`<div class="time"><strong>${from}</strong> → ${to}</div><div class="itembody"><strong>${safe(item.name)}</strong><span>${item.duration}分${item.memo?" ・ "+safe(item.memo):""}</span></div><div class="itemactions"><button aria-label="上に移動" data-action="up" data-id="${item.id}" ${i===0?"disabled":""}>↑</button><button aria-label="下に移動" data-action="down" data-id="${item.id}" ${i===data.items.length-1?"disabled":""}>↓</button><button data-action="edit" data-id="${item.id}">編集</button><button data-action="delete" data-id="${item.id}">削除</button></div>`;
+list.appendChild(row)});
+if(!data.items.length)list.innerHTML='<div class="empty">メニューを追加してください</div>';
+$("total").textContent=elapsed>=60?`${Math.floor(elapsed/60)}時間${elapsed%60}分`:`${elapsed}分`;
+$("end").textContent=clock(base()+elapsed);$("count").textContent=`${data.items.length}メニュー`;save()}
+function resetEditor(){editing=null;$("task").value="";$("duration").value="10";$("memo").value="";$("add").textContent="メニューを追加";$("editHeading").textContent="＋ メニューを追加";$("cancel").hidden=true;updateChips()}
+function updateChips(){document.querySelectorAll("[data-minutes]").forEach(b=>b.classList.toggle("active",Number(b.dataset.minutes)===Number($("duration").value)))}
+[5,10,15,20,30,45,60].forEach(n=>{const b=document.createElement("button");b.textContent=n+"分";b.dataset.minutes=n;b.onclick=()=>{$("duration").value=n;updateChips()};$("chips").appendChild(b)});
+$("duration").addEventListener("input",updateChips);
+["title","date","start"].forEach(id=>$(id).addEventListener("input",()=>{data[id]=$(id).value;render()}));
+$("add").onclick=()=>{const name=$("task").value.trim(),duration=Number($("duration").value),memo=$("memo").value.trim();if(!name){alert("練習内容を入力してください");return}if(!Number.isInteger(duration)||duration<1||duration>600){alert("時間は1〜600分で指定してください");return}
+if(editing!==null){const x=data.items.find(x=>x.id===editing);if(x)Object.assign(x,{name,duration,memo})}
+else data.items.push({id:Date.now()+Math.floor(Math.random()*1000),name,duration,memo});resetEditor();render()};
+$("cancel").onclick=resetEditor;
+$("list").onclick=e=>{const btn=e.target.closest("button[data-action]");if(!btn)return;const id=Number(btn.dataset.id),i=data.items.findIndex(x=>x.id===id);if(i<0)return;const action=btn.dataset.action;
+if(action==="delete"){data.items.splice(i,1);if(editing===id)resetEditor()}
+if(action==="up"&&i>0)[data.items[i-1],data.items[i]]=[data.items[i],data.items[i-1]];
+if(action==="down"&&i<data.items.length-1)[data.items[i+1],data.items[i]]=[data.items[i],data.items[i+1]];
+if(action==="edit"){const x=data.items[i];editing=id;$("task").value=x.name;$("duration").value=x.duration;$("memo").value=x.memo||"";$("add").textContent="変更を保存";$("editHeading").textContent="メニューを編集";$("cancel").hidden=false;updateChips();document.querySelector(".editor").scrollIntoView({behavior:"smooth"})}
+render()};
+function summary(){let t=base();return `${data.title||"練習メニュー"}\n${data.date||""}\n開始 ${data.start}\n\n`+data.items.map(x=>{const from=clock(t);t+=x.duration;return `${from}〜${clock(t)}（${x.duration}分）${x.name}${x.memo?" / "+x.memo:""}`}).join("\n")+`\n\n終了 ${clock(t)} / 合計 ${data.items.reduce((n,x)=>n+x.duration,0)}分`}
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText(summary());alert("コピーしました！LINEに貼り付けられます。")}catch{const el=document.createElement("textarea");el.value=summary();document.body.append(el);el.select();document.execCommand("copy");el.remove();alert("コピーしました")}};
+$("print").onclick=()=>window.print();
+$("new").onclick=()=>{if(!confirm("現在のメニューを消して新規作成しますか？"))return;data={title:"新しい練習",date:today,start:"19:00",items:[]};resetEditor();render()};
+render();updateChips();
+</script></body></html>
